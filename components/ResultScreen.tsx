@@ -210,55 +210,78 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
     return (window as any).html2canvas;
   };
 
-  const handleCopyImage = useCallback(async () => {
-    if (!certRef.current) return;
-    try {
-      const html2canvas = await loadHtml2Canvas();
-      const canvas = await html2canvas(certRef.current, {
-        scale: 2,
-        backgroundColor: "#f9f9fc",
-        useCORS: true,
-      });
-      canvas.toBlob(async (blob: Blob | null) => {
-        if (blob) {
-          try {
-            await navigator.clipboard.write([
-              new ClipboardItem({ "image/png": blob }),
-            ]);
-            alert("检测卡已复制到剪贴板！");
-          } catch {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `废话检测-${pct}%.png`;
-            a.click();
-            URL.revokeObjectURL(url);
+  const captureCert = useCallback(async () => {
+    if (!certRef.current) return null;
+    const html2canvas = await loadHtml2Canvas();
+    return html2canvas(certRef.current, {
+      scale: 2,
+      backgroundColor: "#f9f9fc",
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      onclone: (doc: Document) => {
+        // html2canvas 无法自动捕获 canvas 绘制内容，手动复制像素
+        const srcCanvases = certRef.current!.querySelectorAll("canvas");
+        const clonedCanvases = doc.querySelectorAll("canvas");
+        srcCanvases.forEach((src, i) => {
+          const cloned = clonedCanvases[i];
+          if (cloned) {
+            cloned.width = src.width;
+            cloned.height = src.height;
+            const ctx = cloned.getContext("2d");
+            if (ctx) ctx.drawImage(src, 0, 0);
           }
-        }
-      }, "image/png");
+        });
+      },
+    });
+  }, []);
+
+  const handleCopyImage = useCallback(async () => {
+    try {
+      const canvas = await captureCert();
+      if (!canvas) return;
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png")
+      );
+      if (!blob) return;
+      // 优先尝试剪贴板（桌面端），失败则直接下载（移动端）
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob }),
+        ]);
+        alert("检测卡已复制到剪贴板！");
+      } catch {
+        // 移动端不支持剪贴板写图片，直接下载
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `废话检测-${pct}%.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        alert("图片已下载，去相册分享吧！");
+      }
     } catch {
-      alert("图片生成失败，请截图分享卡片区域");
+      alert("图片生成失败，请长按证书区域截图分享");
     }
-  }, [pct]);
+  }, [captureCert, pct]);
 
   const handleDownloadImage = useCallback(async () => {
-    if (!certRef.current) return;
     try {
-      const html2canvas = await loadHtml2Canvas();
-      const canvas = await html2canvas(certRef.current, {
-        scale: 2,
-        backgroundColor: "#f9f9fc",
-        useCORS: true,
-      });
+      const canvas = await captureCert();
+      if (!canvas) return;
       const url = canvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = url;
       a.download = `废话检测-${pct}%.png`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
     } catch {
-      alert("图片生成失败");
+      alert("图片生成失败，请长按证书区域截图分享");
     }
-  }, [pct]);
+  }, [captureCert, pct]);
 
   return (
     <section className="space-y-lg">
@@ -508,19 +531,21 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
           {/* 新印章：Canvas 外圈 + 内圈橡皮章 */}
           <div className="relative w-[120px] h-[120px]">
             <StampRing pct={pct} />
-            {/* 内圈：橡皮章 */}
+            {/* 内圈：橡皮章 - 居中定位与动画分离，避免transform覆盖 */}
             {stampVisible && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-[62px] h-[62px] rounded-full border-[2.5px] border-dashed border-[#c0392b] flex flex-col items-center justify-center stamp-pop stamp-inner-breathe">
-                  <span className="text-[18px] leading-none text-[#c0392b]">
-                    ✓
-                  </span>
-                  <span className="text-[9px] font-medium text-[#c0392b] leading-none">
-                    已核准
-                  </span>
-                  <span className="text-[6px] text-[#c0392b] tracking-[0.12em] opacity-75 leading-none">
-                    CERTIFIED
-                  </span>
+                <div className="stamp-pop -rotate-[8deg]">
+                  <div className="w-[78px] h-[78px] rounded-full border-[2.5px] border-dashed border-[#c0392b] flex flex-col items-center justify-center stamp-inner-breathe">
+                    <span className="text-[22px] leading-none text-[#c0392b] -mt-0.5">
+                      ✓
+                    </span>
+                    <span className="text-[11px] font-medium text-[#c0392b] leading-none tracking-[0.04em]">
+                      已核准
+                    </span>
+                    <span className="text-[7.5px] text-[#c0392b] tracking-[0.12em] opacity-75 leading-none">
+                      CERTIFIED
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
