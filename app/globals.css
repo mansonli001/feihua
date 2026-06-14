@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,500;1,8..60,500&display=swap');
+
+:root {
+  --neo-shadow: 4px 4px 0px 0px #162839;
+  --neo-shadow-sm: 2px 2px 0px 0px #162839;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  background-color: #f9f9fc;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Neo-Brutalist 阴影 */
+.neo-shadow {
+  box-shadow: var(--neo-shadow);
+}
+.neo-shadow-sm {
+  box-shadow: var(--neo-shadow-sm);
+}
+
+/* 按下效果 */
+.btn-press:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px 0px #162839;
+}
+
+/* 扫描线动画 */
+@keyframes scan {
+  0% { transform: translateY(-10%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(110%); opacity: 0; }
+}
+.scan-line {
+  height: 2px;
+  background: #162839;
+  width: 100%;
+  position: absolute;
+  animation: scan 2s infinite ease-in-out;
+}
+
+/* 印章动画（裁定卡片用） */
+@keyframes stamp {
+  0% { transform: scale(3) rotate(-15deg); opacity: 0; }
+  80% { transform: scale(1) rotate(-8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-8deg); opacity: 1; }
+}
+.stamp-animate {
+  animation: stamp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* 圆环呼吸动画 */
+@keyframes ring-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+.ring-breathe {
+  animation: ring-breathe 2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* 橡皮章弹出动画（证书用） */
+@keyframes stamp-pop {
+  0% { transform: scale(0) rotate(-8deg); opacity: 0; }
+  70% { transform: scale(1.15) rotate(-8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-8deg); opacity: 1; }
+}
+.stamp-pop {
+  animation: stamp-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* 内圈橡皮章呼吸动画 */
+@keyframes stamp-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.15); }
+  50% { box-shadow: 0 0 0 5px rgba(192, 57, 43, 0.08); }
+}
+.stamp-inner-breathe {
+  animation: stamp-breathe 2.8s ease-in-out infinite;
+}
+
+/* 钩子卡片 hover 上浮 */
+.hook-card:hover {
+  transform: translateY(-2px);
+}
+
+/* 进度条斜线纹理 */
+.progress-stripe {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    rgba(255, 255, 255, 0.15) 10px,
+    rgba(255, 255, 255, 0.15) 20px
+  );
+}
+
+/* 虚线分隔 */
+.dashed-divider {
+  background-image: linear-gradient(to right, #162839 33%, rgba(255, 255, 255, 0) 0%);
+  background-position: bottom;
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+  height: 1px;
+}
+
+/* 数字等宽字体 */
+.font-metric {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+}
+
+/* 衬线引用 */
+.font-serif-quote {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-style: italic;
+}
+
+/* label 大写 */
+.label-caps {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+/* 纸张纹理 */
+.paper-grain {
+  background-image: url("https://www.transparenttextures.com/patterns/paper-fibers.png");
+}
+
+/* 证书双线边框 */
+.cert-border {
+  border: 4px double #162839;
+}
+
+/* 官方印章 - 深蓝色椭圆形 */
+.official-seal {
+  border: 2.5px solid #162839;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: rgba(22, 40, 57, 0.03);
+}
+
+/* 椭圆形印章变体 */
+.official-seal-oval {
+  border: 2.5px solid #162839;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  position: relative;
+  background: rgba(22, 40, 57, 0.03);
+  aspect-ratio: 1 / 0.85;
+  padding: 6px;
+}
+
+/* 印章内圈 */
+.seal-inner-ring {
+  border: 1px solid rgba(22, 40, 57, 0.3);
+  border-radius: 50%;
+  position: absolute;
+  inset: 3px;
+  pointer-events: none;
+}
+
+/* textarea placeholder */
+textarea::placeholder {
+  color: #74777d;
+  opacity: 0.7;
+}
