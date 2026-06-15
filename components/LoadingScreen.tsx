@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 const LOADING_STEPS = [
   "词汇扫描与词库比对中",
@@ -12,14 +12,17 @@ interface LoadingScreenProps {
   onDone: () => void;
 }
 
-export default function LoadingScreen({ onDone: _onDone }: LoadingScreenProps) {
+export default function LoadingScreen({ onDone }: LoadingScreenProps) {
   const [activeStep, setActiveStep] = useState(-1);
   const [progress, setProgress] = useState(0);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
 
   useEffect(() => {
     let stepIdx = 0;
     let pct = 0;
     let lastUpdate = 0;
+    let doneCalled = false;
 
     const stepInterval = setInterval(() => {
       if (stepIdx < LOADING_STEPS.length) {
@@ -33,7 +36,12 @@ export default function LoadingScreen({ onDone: _onDone }: LoadingScreenProps) {
       const increment = pct < 90 ? Math.random() * 12 : Math.random() * 1.5;
       pct += increment;
       if (pct >= 98) {
-        pct = 98; // 卡在 98%，等 API 返回后由 page.tsx 切换屏幕
+        pct = 98;
+        // 进度到 98% 后通知 page.tsx loading 动画已完成
+        if (!doneCalled) {
+          doneCalled = true;
+          onDoneRef.current();
+        }
       }
       // 节流 DOM 更新：每 100ms 最多更新一次
       const now = Date.now();
