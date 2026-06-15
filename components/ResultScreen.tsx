@@ -44,7 +44,7 @@ function StampRing({ pct }: { pct: number }) {
     const r = 100;
     const lw = 10;
 
-    function draw(currentPct: number) {
+    function draw(currentPct: number, withGlow = true) {
       ctx!.clearRect(0, 0, size, size);
 
       // track
@@ -56,23 +56,25 @@ function StampRing({ pct }: { pct: number }) {
 
       if (currentPct <= 0) return;
 
-      // glow pass
-      ctx!.save();
-      ctx!.shadowColor = glow;
-      ctx!.shadowBlur = 18;
-      ctx!.beginPath();
-      ctx!.arc(
-        cx,
-        cy,
-        r,
-        -Math.PI / 2,
-        -Math.PI / 2 + Math.PI * 2 * (currentPct / 100)
-      );
-      ctx!.strokeStyle = main;
-      ctx!.lineWidth = lw + 2;
-      ctx!.lineCap = "round";
-      ctx!.stroke();
-      ctx!.restore();
+      // glow pass (仅初始动画时绘制，呼吸阶段跳过以节省 GPU)
+      if (withGlow) {
+        ctx!.save();
+        ctx!.shadowColor = glow;
+        ctx!.shadowBlur = 18;
+        ctx!.beginPath();
+        ctx!.arc(
+          cx,
+          cy,
+          r,
+          -Math.PI / 2,
+          -Math.PI / 2 + Math.PI * 2 * (currentPct / 100)
+        );
+        ctx!.strokeStyle = main;
+        ctx!.lineWidth = lw + 2;
+        ctx!.lineCap = "round";
+        ctx!.stroke();
+        ctx!.restore();
+      }
 
       // crisp pass
       ctx!.beginPath();
@@ -121,6 +123,7 @@ function StampRing({ pct }: { pct: number }) {
     function startBreath() {
       const bt0 = performance.now();
       let lastFrame = 0;
+      const breathDuration = 8400; // 约 3 个呼吸周期后停止
       function bTick(ts: number) {
         // 节流至约 15fps，呼吸动画无需高帧率
         if (ts - lastFrame < 66) {
@@ -128,10 +131,16 @@ function StampRing({ pct }: { pct: number }) {
           return;
         }
         lastFrame = ts;
-        const phase = (ts - bt0) / 1000;
+        const elapsed = ts - bt0;
+        if (elapsed > breathDuration) {
+          // 呼吸动画结束，绘制最终静态帧
+          draw(currentPctRef.current);
+          return;
+        }
+        const phase = elapsed / 1000;
         const pulse = 0.04 * Math.sin(phase * Math.PI * 0.7);
         const v = currentPctRef.current + pulse * currentPctRef.current;
-        draw(v);
+        draw(v, false); // 呼吸阶段跳过 glow
         breathRef.current = requestAnimationFrame(bTick);
       }
       breathRef.current = requestAnimationFrame(bTick);
@@ -178,10 +187,16 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
     // 数字跳动 0.8s
     const dur = 800;
     const t0 = performance.now();
+    let lastRenderedPct = -1;
     const tick = (now: number) => {
       const p = Math.min((now - t0) / dur, 1);
       const e = 1 - Math.pow(1 - p, 3);
-      setAnimatedPct(Math.round(e * pct));
+      const newPct = Math.round(e * pct);
+      // 仅当数值变化时触发重渲染
+      if (newPct !== lastRenderedPct) {
+        lastRenderedPct = newPct;
+        setAnimatedPct(newPct);
+      }
       if (p < 1) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -525,7 +540,7 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
         </div>
         {/* 橡皮章 */}
         <div className="absolute -right-2 -top-2">
-          <div className="w-14 h-14 rounded-full border-[2.5px] border-dashed border-[#c0392b] flex flex-col items-center justify-center stamp-animate stamp-inner-breathe bg-white/70 backdrop-blur-sm">
+          <div className="w-14 h-14 rounded-full border-[2.5px] border-dashed border-[#c0392b] flex flex-col items-center justify-center stamp-animate stamp-inner-breathe bg-white/80">
             <span className="text-[14px] leading-none text-[#c0392b]">✓</span>
             <span className="text-[7px] font-medium text-[#c0392b] leading-none mt-0.5">
               已核准

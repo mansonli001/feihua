@@ -84,7 +84,7 @@ body {
   50% { box-shadow: 0 0 0 5px rgba(192, 57, 43, 0.08); }
 }
 .stamp-inner-breathe {
-  animation: stamp-breathe 2.8s ease-in-out infinite;
+  animation: stamp-breathe 2.8s ease-in-out 3;
 }
 
 /* 钩子卡片 hover 上浮 */

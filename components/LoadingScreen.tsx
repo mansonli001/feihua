@@ -19,6 +19,7 @@ export default function LoadingScreen({ onDone: _onDone }: LoadingScreenProps) {
   useEffect(() => {
     let stepIdx = 0;
     let pct = 0;
+    let lastUpdate = 0;
 
     const stepInterval = setInterval(() => {
       if (stepIdx < LOADING_STEPS.length) {
@@ -34,7 +35,12 @@ export default function LoadingScreen({ onDone: _onDone }: LoadingScreenProps) {
       if (pct >= 98) {
         pct = 98; // 卡在 98%，等 API 返回后由 page.tsx 切换屏幕
       }
-      setProgress(pct);
+      // 节流 DOM 更新：每 100ms 最多更新一次
+      const now = Date.now();
+      if (now - lastUpdate >= 100) {
+        lastUpdate = now;
+        setProgress(pct);
+      }
     }, 300);
 
     return () => {
