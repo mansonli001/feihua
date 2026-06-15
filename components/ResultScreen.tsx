@@ -1,12 +1,20 @@
 "use client";
 
 import { useRef, useCallback, useState, useEffect } from "react";
+import { toBlob, toPng } from "html-to-image";
 import {
   SCHOOL_MAP,
   getRank,
   generateSerial,
   type DetectResult,
 } from "@/lib/constants";
+
+/* 微信浏览器检测 */
+function isWeChatBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent.toLowerCase();
+  return ua.includes("micromessenger");
+}
 
 /* 动态颜色：根据废话含量区间 */
 function getPctColor(pct: number): { main: string; glow: string } {
@@ -112,7 +120,14 @@ function StampRing({ pct }: { pct: number }) {
 
     function startBreath() {
       const bt0 = performance.now();
+      let lastFrame = 0;
       function bTick(ts: number) {
+        // 节流至约 15fps，呼吸动画无需高帧率
+        if (ts - lastFrame < 66) {
+          breathRef.current = requestAnimationFrame(bTick);
+          return;
+        }
+        lastFrame = ts;
         const phase = (ts - bt0) / 1000;
         const pulse = 0.04 * Math.sin(phase * Math.PI * 0.7);
         const v = currentPctRef.current + pulse * currentPctRef.current;
@@ -156,6 +171,9 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
   const [animatedPct, setAnimatedPct] = useState(0);
   const [stampVisible, setStampVisible] = useState(false);
 
+  /* ---- 图片预览弹窗（微信浏览器长按保存） ---- */
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
   useEffect(() => {
     // 数字跳动 0.8s
     const dur = 800;
@@ -193,56 +211,105 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
     ].join("\n");
     navigator.clipboard.writeText(text).then(() => {
       alert("已复制，发小红书去！");
+    }).catch(() => {
+      // 剪贴板权限被拒绝时，fallback：选中文本
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); alert("已复制，发小红书去！"); }
+      catch { alert("复制失败，请手动复制"); }
+      document.body.removeChild(ta);
     });
   }, [pct, school, rank, result]);
 
-  const loadHtml2Canvas = async () => {
-    if (typeof window !== "undefined" && !(window as any).html2canvas) {
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src =
-          "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error("Failed to load html2canvas"));
-        document.head.appendChild(script);
-      });
-    }
-    return (window as any).html2canvas;
-  };
+  /* ---- 截图辅助：冻结 DOM 状态，确保截图与显示一致 ---- */
+  const prepareForCapture = useCallback(() => {
+    const el = certRef.current;
+    if (!el) return null;
 
-  const captureCert = useCallback(async () => {
-    if (!certRef.current) return null;
-    const html2canvas = await loadHtml2Canvas();
-    return html2canvas(certRef.current, {
-      scale: 2,
-      backgroundColor: "#f9f9fc",
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      onclone: (doc: Document) => {
-        // html2canvas 无法自动捕获 canvas 绘制内容，手动复制像素
-        const srcCanvases = certRef.current!.querySelectorAll("canvas");
-        const clonedCanvases = doc.querySelectorAll("canvas");
-        srcCanvases.forEach((src, i) => {
-          const cloned = clonedCanvases[i];
-          if (cloned) {
-            cloned.width = src.width;
-            cloned.height = src.height;
-            const ctx = cloned.getContext("2d");
-            if (ctx) ctx.drawImage(src, 0, 0);
-          }
-        });
-      },
+    // 将 canvas 元素替换为静态 img（html-to-image 无法序列化 canvas 像素）
+    const canvasElements = el.querySelectorAll("canvas");
+    const imgReplacements: { canvas: HTMLCanvasElement; img: HTMLImageElement }[] = [];
+
+    canvasElements.forEach((canvas) => {
+      const img = document.createElement("img");
+      img.src = canvas.toDataURL("image/png");
+      // 先拷贝 cssText（包含 Tailwind 生成的完整样式），再覆盖宽高确保正确
+      img.style.cssText = canvas.style.cssText;
+      img.style.width = canvas.style.width || `${canvas.offsetWidth}px`;
+      img.style.height = canvas.style.height || `${canvas.offsetHeight}px`;
+      img.className = canvas.className;
+      canvas.parentNode?.replaceChild(img, canvas);
+      imgReplacements.push({ canvas, img });
     });
+
+    // 冻结呼吸动画：移除动画类，设置静态 box-shadow
+    const breatheElements = el.querySelectorAll(".stamp-inner-breathe");
+    breatheElements.forEach((elem) => {
+      (elem as HTMLElement).style.animation = "none";
+      (elem as HTMLElement).style.boxShadow = "0 0 0 2px rgba(192, 57, 43, 0.12)";
+    });
+
+    return { el, imgReplacements, breatheElements };
   }, []);
+
+  const restoreAfterCapture = useCallback(
+    (ctx: { imgReplacements: { canvas: HTMLCanvasElement; img: HTMLImageElement }[]; breatheElements: NodeListOf<Element> }) => {
+      ctx.imgReplacements.forEach(({ canvas, img }) => {
+        img.parentNode?.replaceChild(canvas, img);
+      });
+      ctx.breatheElements.forEach((elem) => {
+        (elem as HTMLElement).style.animation = "";
+        (elem as HTMLElement).style.boxShadow = "";
+      });
+    },
+    []
+  );
+
+  const captureCert = useCallback(async (): Promise<Blob | null> => {
+    const ctx = prepareForCapture();
+    if (!ctx) return null;
+    try {
+      return await toBlob(ctx.el, {
+        pixelRatio: 2,
+        backgroundColor: "#f9f9fc",
+        cacheBust: true,
+        includeQueryParams: true,
+      });
+    } finally {
+      restoreAfterCapture(ctx);
+    }
+  }, [prepareForCapture, restoreAfterCapture]);
+
+  const captureCertDataUrl = useCallback(async (): Promise<string | null> => {
+    const ctx = prepareForCapture();
+    if (!ctx) return null;
+    try {
+      return await toPng(ctx.el, {
+        pixelRatio: 2,
+        backgroundColor: "#f9f9fc",
+        cacheBust: true,
+        includeQueryParams: true,
+      });
+    } finally {
+      restoreAfterCapture(ctx);
+    }
+  }, [prepareForCapture, restoreAfterCapture]);
 
   const handleCopyImage = useCallback(async () => {
     try {
-      const canvas = await captureCert();
-      if (!canvas) return;
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/png")
-      );
+      // 微信浏览器：弹出图片预览，提示长按保存
+      if (isWeChatBrowser()) {
+        const dataUrl = await captureCertDataUrl();
+        if (!dataUrl) return;
+        setPreviewImage(dataUrl);
+        return;
+      }
+
+      const blob = await captureCert();
       if (!blob) return;
       // 优先尝试剪贴板（桌面端），失败则直接下载（移动端）
       try {
@@ -265,23 +332,33 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
     } catch {
       alert("图片生成失败，请长按证书区域截图分享");
     }
-  }, [captureCert, pct]);
+  }, [captureCert, captureCertDataUrl, pct]);
 
   const handleDownloadImage = useCallback(async () => {
     try {
-      const canvas = await captureCert();
-      if (!canvas) return;
-      const url = canvas.toDataURL("image/png");
+      // 微信浏览器：弹出图片预览，提示长按保存
+      if (isWeChatBrowser()) {
+        const dataUrl = await captureCertDataUrl();
+        if (!dataUrl) return;
+        setPreviewImage(dataUrl);
+        return;
+      }
+
+      // 非微信环境：使用 blob 下载
+      const blob = await captureCert();
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `废话检测-${pct}%.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch {
       alert("图片生成失败，请长按证书区域截图分享");
     }
-  }, [captureCert, pct]);
+  }, [captureCert, captureCertDataUrl, pct]);
 
   return (
     <section className="space-y-lg">
@@ -682,6 +759,25 @@ export default function ResultScreen({ result, onRetry }: ResultScreenProps) {
           </a>
         </div>
       </div>
+
+      {/* 微信浏览器图片预览弹窗 - 长按保存 */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 flex flex-col items-center justify-center p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="text-white text-center mb-4 text-sm">
+            <p className="text-lg font-semibold mb-1">长按图片保存到相册</p>
+            <p className="text-white/60 text-xs">点击空白区域关闭</p>
+          </div>
+          <img
+            src={previewImage}
+            alt="废话检测证书"
+            className="max-w-full max-h-[70vh] rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </section>
   );
 }

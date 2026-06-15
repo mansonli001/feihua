@@ -6,11 +6,49 @@ import type { DetectResult } from "@/lib/constants";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/* ---- 简易 IP 速率限制 ---- */
+const RATE_LIMIT_WINDOW = 60_000; // 1 分钟
+const RATE_LIMIT_MAX = 10; // 每窗口最多 10 次
+const ipRequests = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = ipRequests.get(ip);
+  if (!record || now > record.resetAt) {
+    ipRequests.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  record.count++;
+  return record.count <= RATE_LIMIT_MAX;
+}
+
+// 定期清理过期记录
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now();
+    const keysToDelete: string[] = [];
+    ipRequests.forEach((rec, ip) => {
+      if (now > rec.resetAt) keysToDelete.push(ip);
+    });
+    keysToDelete.forEach((ip) => ipRequests.delete(ip));
+  }, 120_000);
+}
+
 interface DetectRequestBody {
   text?: string;
 }
 
 export async function POST(req: NextRequest) {
+  // 速率限制
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || req.headers.get("x-real-ip")
+    || "unknown";
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json(
+      { ok: false, error: "请求过于频繁，请稍后再试" },
+      { status: 429 }
+    );
+  }
   let body: DetectRequestBody;
   try {
     body = await req.json();

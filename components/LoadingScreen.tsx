@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 
 const LOADING_STEPS = [
   "词汇扫描与词库比对中",
@@ -12,16 +12,13 @@ interface LoadingScreenProps {
   onDone: () => void;
 }
 
-export default function LoadingScreen({ onDone }: LoadingScreenProps) {
+export default function LoadingScreen({ onDone: _onDone }: LoadingScreenProps) {
   const [activeStep, setActiveStep] = useState(-1);
   const [progress, setProgress] = useState(0);
-  const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
 
   useEffect(() => {
     let stepIdx = 0;
     let pct = 0;
-    let done = false;
 
     const stepInterval = setInterval(() => {
       if (stepIdx < LOADING_STEPS.length) {
@@ -31,15 +28,11 @@ export default function LoadingScreen({ onDone }: LoadingScreenProps) {
     }, 700);
 
     const progressInterval = setInterval(() => {
-      if (done) return;
-      pct += Math.random() * 12;
-      if (pct >= 100) {
-        pct = 100;
-        done = true;
-        clearInterval(progressInterval);
-        clearInterval(stepInterval);
-        setActiveStep(LOADING_STEPS.length);
-        setTimeout(() => onDoneRef.current(), 500);
+      // 90% 以下快速推进，90% 以上减速等待 API 返回
+      const increment = pct < 90 ? Math.random() * 12 : Math.random() * 1.5;
+      pct += increment;
+      if (pct >= 98) {
+        pct = 98; // 卡在 98%，等 API 返回后由 page.tsx 切换屏幕
       }
       setProgress(pct);
     }, 300);
